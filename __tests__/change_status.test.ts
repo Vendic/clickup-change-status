@@ -25,19 +25,25 @@ describe('Test happy path', () => {
             .persist()
             .put('/api/v2/task/ABC-123/?custom_task_ids=true&team_id=123')
             .reply(200, apiReply)
+        nock('https://api.clickup.com')
+            .persist()
+            .put('/api/v2/task/DEF-123/?custom_task_ids=true&team_id=123')
+            .reply(200, apiReply)
+
 
 
         await run()
 
         // Assertions
         expect(infoMock).toHaveBeenCalledWith('Changed the status of ABC-123 to in review successfully.')
+        expect(infoMock).toHaveBeenCalledWith('Changed the status of DEF-123 to in review successfully.')
     })
 })
 
 beforeEach(() => {
     jest.resetModules()
     process.env['INPUT_CLICKUP_TOKEN'] = 'xyz'
-    process.env['INPUT_CLICKUP_CUSTOM_TASK_ID'] = 'ABC-123'
+    process.env['INPUT_CLICKUP_CUSTOM_TASK_IDS'] = 'ABC-123\nDEF-123'
     process.env['INPUT_CLICKUP_TEAM_ID'] = '123'
     process.env['INPUT_CLICKUP_STATUS'] = 'in review'
 })

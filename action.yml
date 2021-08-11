@@ -8,8 +8,8 @@ inputs:
     clickup_token:
         description: Your clickup token
         required: true
-    clickup_custom_task_id:
-        description: Your clickup custom task ID
+    clickup_custom_task_ids:
+        description: A list of custom task IDS of which you want to change the status
         required: true
     clickup_team_id:
         description: Your clickup team id
