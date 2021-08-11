@@ -4455,10 +4455,10 @@ __nccwpck_require__.r(__webpack_exports__);
 /* harmony import */ var axios__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(7126);
 /* harmony import */ var axios__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__nccwpck_require__.n(axios__WEBPACK_IMPORTED_MODULE_1__);
 
-// import * as github from '@actions/github'
 
 const run = async () => {
     try {
+        let failed = false;
         const token = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput('clickup_token');
         const task_ids = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getMultilineInput('clickup_custom_task_ids');
         const team_id = _actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput('clickup_team_id');
@@ -4468,14 +4468,21 @@ const run = async () => {
         };
         for (const task_id of task_ids) {
             let endpoint = `https://api.clickup.com/api/v2/task/${task_id}/?custom_task_ids=true&team_id=${team_id}`;
-            let result = await axios__WEBPACK_IMPORTED_MODULE_1___default().put(endpoint, body, {
+            await axios__WEBPACK_IMPORTED_MODULE_1___default().put(endpoint, body, {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': token
                 }
+            }).then((result) => {
+                let new_status = result.data.status.status;
+                _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Changed the status of ${task_id} to ${new_status} successfully.`);
+            }).catch(function (error) {
+                failed = true;
+                _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`${task_id} error: ${error.message}`);
             });
-            let new_status = result.data.status.status;
-            _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Changed the status of ${task_id} to ${new_status} successfully.`);
+        }
+        if (failed) {
+            throw 'One of the API requests has failed. Please check the logs for more details.';
         }
     }
     catch (error) {

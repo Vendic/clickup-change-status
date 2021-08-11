@@ -7,6 +7,7 @@ import nock from "nock";
 describe('Test happy path', () => {
     it('does a call to the Clickup API', async () => {
         // Mocks
+        const failedMock = jest.spyOn(core, 'setFailed')
         const infoMock = jest.spyOn(core, 'info')
         const apiReply = {
             "id": "9hx",
@@ -37,13 +38,14 @@ describe('Test happy path', () => {
         // Assertions
         expect(infoMock).toHaveBeenCalledWith('Changed the status of ABC-123 to in review successfully.')
         expect(infoMock).toHaveBeenCalledWith('Changed the status of DEF-123 to in review successfully.')
+        expect(failedMock).toHaveBeenCalledWith('Action failed: One of the API requests has failed. Please check the logs for more details.')
     })
 })
 
 beforeEach(() => {
     jest.resetModules()
     process.env['INPUT_CLICKUP_TOKEN'] = 'xyz'
-    process.env['INPUT_CLICKUP_CUSTOM_TASK_IDS'] = 'ABC-123\nDEF-123'
+    process.env['INPUT_CLICKUP_CUSTOM_TASK_IDS'] = 'ABC-123\nDEF-123\nNON-123'
     process.env['INPUT_CLICKUP_TEAM_ID'] = '123'
     process.env['INPUT_CLICKUP_STATUS'] = 'in review'
 })
