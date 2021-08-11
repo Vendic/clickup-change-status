@@ -1,0 +1,20 @@
+name: 'clickup-change-status'
+description: 'Change your task status in Clickup'
+author: 'Tjitse-E'
+runs:
+    using: 'node12'
+    main: 'dist/index.js'
+inputs:
+    clickup_token:
+        description: Your clickup token
+        required: true
+    clickup_custom_task_id:
+        description: Your clickup custom task ID
+        required: true
+    clickup_team_id:
+        description: Your clickup team id
+        required: true
+    clickup_status:
+        description: The target status of your task
+        required: true
+
