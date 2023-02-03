@@ -2,7 +2,7 @@ name: 'clickup-change-status'
 description: 'Change your task status in Clickup'
 author: 'Tjitse-E'
 runs:
-    using: 'node12'
+    using: 'node16'
     main: 'dist/index.js'
 inputs:
     clickup_token:
