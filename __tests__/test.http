@@ -1,6 +1,0 @@
-### Click ticket
-# @no-cookie-jar
-GET {{host}}/api/v2/task/MIEPRO-33?team_id={{clickup_team_id}}&custom_task_ids=true
-Authorization: {{clickup_token}}
-User-Agent: vendic-clickup-change-status
-Accept: {{accept}}
