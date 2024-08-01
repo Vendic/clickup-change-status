@@ -6180,20 +6180,29 @@ const run = async () => {
         const body = {
             "status": target_status
         };
+        const config = {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': token
+            }
+        };
         for (const task_id of task_ids) {
-            let endpoint = `https://api.clickup.com/api/v2/task/${task_id}/?custom_task_ids=true&team_id=${team_id}`;
-            await axios_1.default.put(endpoint, body, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': token
+            try {
+                const result = await axios_1.default.get(`https://api.clickup.com/api/v2/task/${task_id}/?custom_task_ids=true&team_id=${team_id}`, config);
+                core.info(`${task_id} has status ${result.data.status.status} and wants to move to ${target_status}`);
+                if (result.data.status.status === 'done' && target_status === 'approved') {
+                    core.warning(`Cannot change the status of ${task_id} from done to approved. Skipping...`);
+                    continue;
                 }
-            }).then((result) => {
-                let new_status = result.data.status.status;
+                const putResult = await axios_1.default.put(`https://api.clickup.com/api/v2/task/${task_id}/?custom_task_ids=true&team_id=${team_id}`, body, config);
+                let new_status = putResult.data.status.status;
                 core.info(`Changed the status of ${task_id} to ${new_status} successfully.`);
-            }).catch(function (error) {
+            }
+            catch (error) {
                 failed = true;
-                core.info(`${task_id} error: ${error.message}`);
-            });
+                const errorMessage = error?.message || JSON.stringify(error);
+                core.info(`${task_id} error: ${errorMessage}`);
+            }
         }
         if (failed) {
             throw 'One of the API requests has failed. Please check the logs for more details.';
