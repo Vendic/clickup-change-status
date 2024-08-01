@@ -24,7 +24,7 @@ const run = async (): Promise<void> => {
                     `https://api.clickup.com/api/v2/task/${task_id}/?custom_task_ids=true&team_id=${team_id}`,
                     config
                 )
-                core.warning(` ${task_id} has status ${result.data.status.status} and wants to move to ${target_status}`);
+                core.info(` ${task_id} has status ${result.data.status.status} and wants to move to ${target_status}`);
 
                 if (result.data.status.status === 'done' && target_status === 'approved') {
                     core.warning(`Cannot change the status of ${task_id} from done to approved. Skipping...`);
