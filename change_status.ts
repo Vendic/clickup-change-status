@@ -11,25 +11,38 @@ const run = async (): Promise<void> => {
         const body = {
             "status": target_status
         }
+        const config = {
+            headers:{
+                'Content-Type': 'application/json',
+                'Authorization': token
+            }
+        };
 
         for (const task_id of task_ids) {
-            let endpoint = `https://api.clickup.com/api/v2/task/${task_id}/?custom_task_ids=true&team_id=${team_id}`
-            await axios.put(endpoint, body, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': token
+            try {
+                const result = await axios.get(
+                    `https://api.clickup.com/api/v2/task/${task_id}/?custom_task_ids=true&team_id=${team_id}`,
+                    config
+                )
+
+                if (result.data.status.status === 'done' && target_status === 'approved') {
+                    core.warning(`Cannot change the status of ${task_id} from done to approved. Skipping...`);
+                    continue;
                 }
-            }).then(
-                    (result) => {
-                    let new_status = result.data.status.status
-                    core.info(`Changed the status of ${task_id} to ${new_status} successfully.`)
-                }
-            ).catch(
-                function (error) {
-                    failed = true
-                    core.info(`${task_id} error: ${error.message}`)
-                }
-            )
+
+                const putResult = await axios.put(
+                    `https://api.clickup.com/api/v2/task/${task_id}/?custom_task_ids=true&team_id=${team_id}`,
+                    body,
+                    config
+                )
+
+                let new_status = putResult.data.status.status;
+                core.info(`Changed the status of ${task_id} to ${new_status} successfully.`);
+            } catch (error: any) {
+                failed = true;
+                const errorMessage = error?.message || JSON.stringify(error);
+                core.info(`${task_id} error: ${errorMessage}`);
+            }
         }
 
         if (failed) {
@@ -39,7 +52,6 @@ const run = async (): Promise<void> => {
     } catch (error) {
         core.setFailed(`Action failed: ${error}`)
     }
-
 }
 
 run()
