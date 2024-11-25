@@ -4,7 +4,7 @@
     "description": "Change your task status in Clickup",
     "main": "change_status.ts",
     "scripts": {
-        "build": "tsc",
+        "build": "ncc build change_status.ts -o dist && mv dist/index.js",
         "test": "tsc --noEmit && jest"
     },
     "license": "MIT",

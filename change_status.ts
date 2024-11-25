@@ -27,8 +27,14 @@ const run = async (): Promise<void> => {
 
                 core.info(`${task_id} has status ${result.data.status.status} and wants to move to ${target_status}`);
 
-                if (result.data.status.status === 'done' && target_status === 'approved') {
-                    core.warning(`Cannot change the status of ${task_id} from done to approved. Skipping...`);
+                if (
+                    result.data.status.status === 'done' &&
+                    (
+                        target_status === 'in progress' ||
+                        target_status === 'approved'
+                    )
+                ) {
+                    core.warning(`Cannot change the status of ${task_id} from done to ${target_status}. Skipping...`);
                     continue;
                 }
 

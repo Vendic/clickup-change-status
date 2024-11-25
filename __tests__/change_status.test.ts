@@ -1,4 +1,3 @@
-// Mocking the github context https://github.com/actions/toolkit/blob/master/docs/github-package.md#mocking-the-github-context
 import * as core from '@actions/core';
 import run from '../change_status';
 import nock from 'nock';
@@ -6,20 +5,57 @@ import nock from 'nock';
 describe('Change Status Action', () => {
     const clickUpApiBase = 'https://api.clickup.com/api/v2/task';
     const teamId = '123';
-    const targetStatus = 'approved'; // Status we're trying to set, which should be invalid
+    let targetStatus: string;
 
     let failedMock: jest.SpyInstance;
     let infoMock: jest.SpyInstance;
     let warningMock: jest.SpyInstance;
 
+    const setEnvVars = (status: string, customTaskIds = 'ABC-123\nDEF-123\nNON-123\nZXC-987') => {
+        process.env['INPUT_CLICKUP_STATUS'] = status;
+        process.env['INPUT_CLICKUP_CUSTOM_TASK_IDS'] = customTaskIds;
+    };
+
+    const mockClickUpApi = (taskId: string, currentStatus: string, targetStatus: string, success = true) => {
+        const taskReply = {
+            id: taskId,
+            custom_id: null,
+            name: 'Updated Task Name',
+            text_content: 'Updated Task Content',
+            description: 'Updated Task Content',
+            status: {
+                status: currentStatus,
+                color: '#d3d3d3',
+                orderindex: 1,
+                type: 'custom',
+            },
+        };
+
+        nock(clickUpApiBase)
+            .get(new RegExp(`/${taskId}/\\?custom_task_ids=true&team_id=\\d+`))
+            .reply(200, taskReply);
+
+        if (success) {
+            taskReply.status.status = targetStatus;
+            nock(clickUpApiBase)
+                .put(new RegExp(`/${taskId}/\\?custom_task_ids=true&team_id=\\d+`))
+                .reply(200, taskReply);
+        } else {
+            nock(clickUpApiBase)
+                .put(new RegExp(`/${taskId}/\\?custom_task_ids=true&team_id=\\d+`))
+                .reply(500);
+        }
+    };
+
     beforeAll(() => {
         process.env['INPUT_CLICKUP_TOKEN'] = 'xyz';
-        process.env['INPUT_CLICKUP_CUSTOM_TASK_IDS'] = 'ABC-123\nDEF-123\nNON-123\nZXC-987';
         process.env['INPUT_CLICKUP_TEAM_ID'] = teamId;
-        process.env['INPUT_CLICKUP_STATUS'] = targetStatus; // Set to 'approved'
     });
 
     beforeEach(() => {
+        targetStatus = 'approved'; // Default target status
+        setEnvVars(targetStatus);
+
         failedMock = jest.spyOn(core, 'setFailed').mockImplementation(jest.fn());
         infoMock = jest.spyOn(core, 'info').mockImplementation(jest.fn());
         warningMock = jest.spyOn(core, 'warning').mockImplementation(jest.fn());
@@ -36,46 +72,24 @@ describe('Change Status Action', () => {
     });
 
     it('successfully changes the status of multiple ClickUp tasks', async () => {
-        const validInReviewReply = {
-            id: '9hx',
-            custom_id: null,
-            name: 'Updated Task Name',
-            text_content: 'Updated Task Content',
-            description: 'Updated Task Content',
-            status: {
-                status: 'in review', // Assume this is a valid status change
-                color: '#d3d3d3',
-                orderindex: 1,
-                type: 'custom',
-            },
-        };
+        targetStatus = 'in review';
+        setEnvVars(targetStatus);
 
-        // Mock the ClickUp API for valid status transitions
-        nock(clickUpApiBase)
-            .get(/\/ABC-123\/\?custom_task_ids=true&team_id=\d+/)
-            .reply(200, validInReviewReply)
-            .get(/\/DEF-123\/\?custom_task_ids=true&team_id=\d+/)
-            .reply(200, validInReviewReply)
-            .put(/\/ABC-123\/\?custom_task_ids=true&team_id=\d+/)
-            .reply(200, validInReviewReply)
-            .put(/\/DEF-123\/\?custom_task_ids=true&team_id=\d+/)
-            .reply(200, validInReviewReply);
+        mockClickUpApi('ABC-123', 'open', targetStatus);
+        mockClickUpApi('DEF-123', 'open', targetStatus);
 
         await run();
 
         expect(infoMock).toHaveBeenCalledWith(
-            'Changed the status of ABC-123 to in review successfully.'
+            `Changed the status of ABC-123 to ${targetStatus} successfully.`
         );
         expect(infoMock).toHaveBeenCalledWith(
-            'Changed the status of DEF-123 to in review successfully.'
+            `Changed the status of DEF-123 to ${targetStatus} successfully.`
         );
     });
 
     it('handles API failures gracefully', async () => {
-        // Mock a failing request
-        nock(clickUpApiBase)
-            .put(/\/NON-123\/\?custom_task_ids=true&team_id=\d+/)
-            .reply(500);
+        mockClickUpApi('NON-123', 'in progress', targetStatus, false);
 
         await run();
 
@@ -85,29 +99,41 @@ describe('Change Status Action', () => {
     });
 
     it('does not change the status from "done" to "approved"', async () => {
-        const doneTicketReply = {
-            id: '9hx',
-            custom_id: null,
-            name: 'Task Name',
-            text_content: 'Task Content',
-            description: 'Task Content',
-            status: {
-                status: 'done',
-                color: '#d3d3d3',
-                orderindex: 2,
-                type: 'custom',
-            },
-        };
+        targetStatus = 'approved';
+        setEnvVars(targetStatus);
 
-        // Mock the ClickUp API for the "done" status transition
-        nock(clickUpApiBase)
-            .get(/\/ZXC-987\/\?custom_task_ids=true&team_id=\d+/)
-            .reply(200, doneTicketReply); // Mock a task that is currently "done"
+        mockClickUpApi('ZXC-987', 'done', targetStatus, false);
 
         await run();
 
         expect(warningMock).toHaveBeenCalledWith(
-            'Cannot change the status of ZXC-987 from done to approved. Skipping...'
+            `Cannot change the status of ZXC-987 from done to ${targetStatus}. Skipping...`
+        );
+    });
+
+    it('does not change the status from "done" to "in progress"', async () => {
+        targetStatus = 'in progress';
+        setEnvVars(targetStatus);
+
+        mockClickUpApi('ZXC-987', 'done', targetStatus, false);
+
+        await run();
+
+        expect(warningMock).toHaveBeenCalledWith(
+            `Cannot change the status of ZXC-987 from done to ${targetStatus}. Skipping...`
+        );
+    });
+
+    it('changes the status from "done" to "todo"', async () => {
+        targetStatus = 'todo';
+        setEnvVars(targetStatus, 'ABC-123');
+
+        mockClickUpApi('ABC-123', 'done', targetStatus);
+
+        await run();
+
+        expect(infoMock).toHaveBeenCalledWith(
+            `Changed the status of ABC-123 to ${targetStatus} successfully.`
         );
     });
 });
