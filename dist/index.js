@@ -6190,6 +6190,10 @@ const run = async () => {
             try {
                 const result = await axios_1.default.get(`https://api.clickup.com/api/v2/task/${task_id}/?custom_task_ids=true&team_id=${team_id}`, config);
                 core.info(`${task_id} has status ${result.data.status.status} and wants to move to ${target_status}`);
+                if (result.data.status.status === 'on hold') {
+                    core.warning(`Cannot change the status of ${task_id} from on hold. Skipping...`);
+                    continue;
+                }
                 if (result.data.status.status === 'done' &&
                     (target_status === 'in progress' ||
                         target_status === 'approved')) {
