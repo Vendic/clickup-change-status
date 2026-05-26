@@ -21,8 +21,13 @@ const run = async (): Promise<void> => {
 
             try {
                 await axios.get(endpoint, { headers })
-            } catch {
-                core.warning(`Task ${task_id} not found in ClickUp, skipping.`)
+            } catch (error) {
+                if (axios.isAxiosError(error) && error.response?.status === 404) {
+                    core.warning(`Task ${task_id} not found in ClickUp (404), skipping.`)
+                    continue
+                }
+                failed = true
+                core.error(`${task_id} GET error: ${error instanceof Error ? error.message : error}`)
                 continue
             }
 
@@ -34,7 +39,7 @@ const run = async (): Promise<void> => {
             ).catch(
                 function (error) {
                     failed = true
-                    core.info(`${task_id} error: ${error.message}`)
+                    core.error(`${task_id} error: ${error.message}`)
                 }
             )
         }

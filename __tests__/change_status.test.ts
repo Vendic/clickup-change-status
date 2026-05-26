@@ -62,8 +62,45 @@ describe('Test non-existent task', () => {
         await run()
 
         expect(infoMock).toHaveBeenCalledWith('Changed the status of ABC-123 to in review successfully.')
-        expect(warningMock).toHaveBeenCalledWith('Task NON-123 not found in ClickUp, skipping.')
+        expect(warningMock).toHaveBeenCalledWith('Task NON-123 not found in ClickUp (404), skipping.')
         expect(failedMock).not.toHaveBeenCalled()
+    })
+})
+
+describe('Test GET server error', () => {
+    it('fails when GET returns a non-404 error', async () => {
+        const failedMock = jest.spyOn(core, 'setFailed')
+        const errorMock = jest.spyOn(core, 'error')
+
+        nock('https://api.clickup.com')
+            .get('/api/v2/task/ABC-123/?custom_task_ids=true&team_id=123')
+            .reply(500, { err: 'Internal Server Error' })
+
+        process.env['INPUT_CLICKUP_CUSTOM_TASK_IDS'] = 'ABC-123'
+        await run()
+
+        expect(errorMock).toHaveBeenCalledWith(expect.stringContaining('ABC-123 GET error:'))
+        expect(failedMock).toHaveBeenCalledWith('Action failed: One of the API requests has failed. Please check the logs for more details.')
+    })
+})
+
+describe('Test PUT failure after successful GET', () => {
+    it('fails when PUT returns an error for a valid task', async () => {
+        const failedMock = jest.spyOn(core, 'setFailed')
+        const errorMock = jest.spyOn(core, 'error')
+
+        nock('https://api.clickup.com')
+            .get('/api/v2/task/ABC-123/?custom_task_ids=true&team_id=123')
+            .reply(200, apiReply)
+        nock('https://api.clickup.com')
+            .put('/api/v2/task/ABC-123/?custom_task_ids=true&team_id=123')
+            .reply(403, { err: 'Forbidden' })
+
+        process.env['INPUT_CLICKUP_CUSTOM_TASK_IDS'] = 'ABC-123'
+        await run()
+
+        expect(errorMock).toHaveBeenCalledWith(expect.stringContaining('ABC-123 error:'))
+        expect(failedMock).toHaveBeenCalledWith('Action failed: One of the API requests has failed. Please check the logs for more details.')
     })
 })
 
@@ -76,8 +113,10 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-    delete process.env['GITHUB_REPOSITORY']
-    delete process.env['INPUT_TOKEN']
+    delete process.env['INPUT_CLICKUP_TOKEN']
+    delete process.env['INPUT_CLICKUP_CUSTOM_TASK_IDS']
+    delete process.env['INPUT_CLICKUP_TEAM_ID']
+    delete process.env['INPUT_CLICKUP_STATUS']
     nock.cleanAll()
     jest.restoreAllMocks()
 })

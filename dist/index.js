@@ -6189,8 +6189,13 @@ const run = async () => {
             try {
                 await axios_1.default.get(endpoint, { headers });
             }
-            catch {
-                core.warning(`Task ${task_id} not found in ClickUp, skipping.`);
+            catch (error) {
+                if (axios_1.default.isAxiosError(error) && error.response?.status === 404) {
+                    core.warning(`Task ${task_id} not found in ClickUp (404), skipping.`);
+                    continue;
+                }
+                failed = true;
+                core.error(`${task_id} GET error: ${error instanceof Error ? error.message : error}`);
                 continue;
             }
             await axios_1.default.put(endpoint, body, { headers }).then((result) => {
@@ -6198,7 +6203,7 @@ const run = async () => {
                 core.info(`Changed the status of ${task_id} to ${new_status} successfully.`);
             }).catch(function (error) {
                 failed = true;
-                core.info(`${task_id} error: ${error.message}`);
+                core.error(`${task_id} error: ${error.message}`);
             });
         }
         if (failed) {
