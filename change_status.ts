@@ -11,37 +11,63 @@ const run = async (): Promise<void> => {
         const body = {
             "status": target_status
         }
-
-        for (const task_id of task_ids) {
-            const endpoint = `https://api.clickup.com/api/v2/task/${task_id}/?custom_task_ids=true&team_id=${team_id}`
-            const headers = {
+        const config = {
+            headers:{
                 'Content-Type': 'application/json',
                 'Authorization': token
             }
+        };
 
+        for (const task_id of task_ids) {
+            let result;
             try {
-                await axios.get(endpoint, { headers })
+                result = await axios.get(
+                    `https://api.clickup.com/api/v2/task/${task_id}/?custom_task_ids=true&team_id=${team_id}`,
+                    config
+                )
             } catch (error) {
                 if (axios.isAxiosError(error) && error.response?.status === 404) {
                     core.warning(`Task ${task_id} not found in ClickUp (404), skipping.`)
                     continue
                 }
                 failed = true
-                core.error(`${task_id} GET error: ${error instanceof Error ? error.message : error}`)
+                const errorMessage = error instanceof Error ? error.message : JSON.stringify(error)
+                core.error(`${task_id} GET error: ${errorMessage}`)
                 continue
             }
 
-            await axios.put(endpoint, body, { headers }).then(
-                (result) => {
-                    const new_status = result.data.status.status
-                    core.info(`Changed the status of ${task_id} to ${new_status} successfully.`)
-                }
-            ).catch(
-                function (error) {
-                    failed = true
-                    core.error(`${task_id} error: ${error.message}`)
-                }
-            )
+            core.info(`${task_id} has status ${result.data.status.status} and wants to move to ${target_status}`);
+
+            if (result.data.status.status === 'on hold') {
+                core.warning(`Cannot change the status of ${task_id} from on hold. Skipping...`);
+                continue;
+            }
+
+            if (
+                result.data.status.status === 'done' &&
+                (
+                    target_status === 'in progress' ||
+                    target_status === 'approved'
+                )
+            ) {
+                core.warning(`Cannot change the status of ${task_id} from done to ${target_status}. Skipping...`);
+                continue;
+            }
+
+            try {
+                const putResult = await axios.put(
+                    `https://api.clickup.com/api/v2/task/${task_id}/?custom_task_ids=true&team_id=${team_id}`,
+                    body,
+                    config
+                )
+
+                const new_status = putResult.data.status.status;
+                core.info(`Changed the status of ${task_id} to ${new_status} successfully.`);
+            } catch (error) {
+                failed = true;
+                const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+                core.error(`${task_id} error: ${errorMessage}`);
+            }
         }
 
         if (failed) {
@@ -51,7 +77,6 @@ const run = async (): Promise<void> => {
     } catch (error) {
         core.setFailed(`Action failed: ${error}`)
     }
-
 }
 
 run()

@@ -1,122 +1,175 @@
-import * as core from '@actions/core'
-import run from '../change_status'
-import nock from "nock";
+import * as core from '@actions/core';
+import run from '../change_status';
+import nock from 'nock';
 
-const apiReply = {
-    "id": "9hx",
-    "custom_id": null,
-    "name": "Updated Task Name",
-    "text_content": "Updated Task Content",
-    "description": "Updated Task Content",
-    "status": {
-        "status": "in review",
-        "color": "#d3d3d3",
-        "orderindex": 1,
-        "type": "custom"
-    }
-}
+describe('Change Status Action', () => {
+    const clickUpApiBase = 'https://api.clickup.com/api/v2/task';
+    const teamId = '123';
+    let targetStatus: string;
 
-describe('Test happy path', () => {
-    it('does a call to the Clickup API', async () => {
-        const failedMock = jest.spyOn(core, 'setFailed')
-        const infoMock = jest.spyOn(core, 'info')
+    let failedMock: jest.SpyInstance;
+    let infoMock: jest.SpyInstance;
+    let warningMock: jest.SpyInstance;
+    let errorMock: jest.SpyInstance;
 
-        nock('https://api.clickup.com')
-            .get('/api/v2/task/ABC-123/?custom_task_ids=true&team_id=123')
-            .reply(200, apiReply)
-        nock('https://api.clickup.com')
-            .put('/api/v2/task/ABC-123/?custom_task_ids=true&team_id=123')
-            .reply(200, apiReply)
-        nock('https://api.clickup.com')
-            .get('/api/v2/task/DEF-123/?custom_task_ids=true&team_id=123')
-            .reply(200, apiReply)
-        nock('https://api.clickup.com')
-            .put('/api/v2/task/DEF-123/?custom_task_ids=true&team_id=123')
-            .reply(200, apiReply)
+    const setEnvVars = (status: string, customTaskIds = 'ABC-123\nDEF-123') => {
+        process.env['INPUT_CLICKUP_STATUS'] = status;
+        process.env['INPUT_CLICKUP_CUSTOM_TASK_IDS'] = customTaskIds;
+    };
 
-        await run()
+    const mockClickUpApi = (taskId: string, currentStatus: string, targetStatus: string, success = true) => {
+        const taskReply = {
+            id: taskId,
+            custom_id: null,
+            name: 'Updated Task Name',
+            text_content: 'Updated Task Content',
+            description: 'Updated Task Content',
+            status: {
+                status: currentStatus,
+                color: '#d3d3d3',
+                orderindex: 1,
+                type: 'custom',
+            },
+        };
 
-        expect(infoMock).toHaveBeenCalledWith('Changed the status of ABC-123 to in review successfully.')
-        expect(infoMock).toHaveBeenCalledWith('Changed the status of DEF-123 to in review successfully.')
-        expect(failedMock).not.toHaveBeenCalled()
-    })
-})
+        nock(clickUpApiBase)
+            .get(new RegExp(`/${taskId}/\\?custom_task_ids=true&team_id=\\d+`))
+            .reply(200, taskReply);
 
-describe('Test non-existent task', () => {
-    it('warns and skips tasks that do not exist in ClickUp', async () => {
-        const failedMock = jest.spyOn(core, 'setFailed')
-        const warningMock = jest.spyOn(core, 'warning')
-        const infoMock = jest.spyOn(core, 'info')
+        if (success) {
+            taskReply.status.status = targetStatus;
+            nock(clickUpApiBase)
+                .put(new RegExp(`/${taskId}/\\?custom_task_ids=true&team_id=\\d+`))
+                .reply(200, taskReply);
+        } else {
+            nock(clickUpApiBase)
+                .put(new RegExp(`/${taskId}/\\?custom_task_ids=true&team_id=\\d+`))
+                .reply(500);
+        }
+    };
 
-        nock('https://api.clickup.com')
-            .get('/api/v2/task/ABC-123/?custom_task_ids=true&team_id=123')
-            .reply(200, apiReply)
-        nock('https://api.clickup.com')
-            .put('/api/v2/task/ABC-123/?custom_task_ids=true&team_id=123')
-            .reply(200, apiReply)
-        nock('https://api.clickup.com')
-            .get('/api/v2/task/NON-123/?custom_task_ids=true&team_id=123')
-            .reply(404, { err: 'Task not found' })
+    beforeAll(() => {
+        process.env['INPUT_CLICKUP_TOKEN'] = 'xyz';
+        process.env['INPUT_CLICKUP_TEAM_ID'] = teamId;
+    });
 
-        process.env['INPUT_CLICKUP_CUSTOM_TASK_IDS'] = 'ABC-123\nNON-123'
-        await run()
+    beforeEach(() => {
+        targetStatus = 'approved';
+        setEnvVars(targetStatus);
 
-        expect(infoMock).toHaveBeenCalledWith('Changed the status of ABC-123 to in review successfully.')
-        expect(warningMock).toHaveBeenCalledWith('Task NON-123 not found in ClickUp (404), skipping.')
-        expect(failedMock).not.toHaveBeenCalled()
-    })
-})
+        failedMock = jest.spyOn(core, 'setFailed').mockImplementation(jest.fn());
+        infoMock = jest.spyOn(core, 'info').mockImplementation(jest.fn());
+        warningMock = jest.spyOn(core, 'warning').mockImplementation(jest.fn());
+        errorMock = jest.spyOn(core, 'error').mockImplementation(jest.fn());
+    });
 
-describe('Test GET server error', () => {
-    it('fails when GET returns a non-404 error', async () => {
-        const failedMock = jest.spyOn(core, 'setFailed')
-        const errorMock = jest.spyOn(core, 'error')
+    afterEach(() => {
+        jest.clearAllMocks();
+        nock.cleanAll();
+    });
 
-        nock('https://api.clickup.com')
-            .get('/api/v2/task/ABC-123/?custom_task_ids=true&team_id=123')
-            .reply(500, { err: 'Internal Server Error' })
+    afterAll(() => {
+        delete process.env['INPUT_CLICKUP_TOKEN'];
+        delete process.env['INPUT_CLICKUP_TEAM_ID'];
+    });
 
-        process.env['INPUT_CLICKUP_CUSTOM_TASK_IDS'] = 'ABC-123'
-        await run()
+    it('successfully changes the status of multiple ClickUp tasks', async () => {
+        targetStatus = 'in review';
+        setEnvVars(targetStatus);
 
-        expect(errorMock).toHaveBeenCalledWith(expect.stringContaining('ABC-123 GET error:'))
-        expect(failedMock).toHaveBeenCalledWith('Action failed: One of the API requests has failed. Please check the logs for more details.')
-    })
-})
+        mockClickUpApi('ABC-123', 'open', targetStatus);
+        mockClickUpApi('DEF-123', 'open', targetStatus);
 
-describe('Test PUT failure after successful GET', () => {
-    it('fails when PUT returns an error for a valid task', async () => {
-        const failedMock = jest.spyOn(core, 'setFailed')
-        const errorMock = jest.spyOn(core, 'error')
+        await run();
 
-        nock('https://api.clickup.com')
-            .get('/api/v2/task/ABC-123/?custom_task_ids=true&team_id=123')
-            .reply(200, apiReply)
-        nock('https://api.clickup.com')
-            .put('/api/v2/task/ABC-123/?custom_task_ids=true&team_id=123')
-            .reply(403, { err: 'Forbidden' })
+        expect(infoMock).toHaveBeenCalledWith(
+            `Changed the status of ABC-123 to ${targetStatus} successfully.`
+        );
+        expect(infoMock).toHaveBeenCalledWith(
+            `Changed the status of DEF-123 to ${targetStatus} successfully.`
+        );
+        expect(failedMock).not.toHaveBeenCalled();
+    });
 
-        process.env['INPUT_CLICKUP_CUSTOM_TASK_IDS'] = 'ABC-123'
-        await run()
+    it('handles API failures gracefully', async () => {
+        mockClickUpApi('ABC-123', 'in progress', targetStatus, false);
+        setEnvVars(targetStatus, 'ABC-123');
 
-        expect(errorMock).toHaveBeenCalledWith(expect.stringContaining('ABC-123 error:'))
-        expect(failedMock).toHaveBeenCalledWith('Action failed: One of the API requests has failed. Please check the logs for more details.')
-    })
-})
+        await run();
 
-beforeEach(() => {
-    jest.resetModules()
-    process.env['INPUT_CLICKUP_TOKEN'] = 'xyz'
-    process.env['INPUT_CLICKUP_CUSTOM_TASK_IDS'] = 'ABC-123\nDEF-123'
-    process.env['INPUT_CLICKUP_TEAM_ID'] = '123'
-    process.env['INPUT_CLICKUP_STATUS'] = 'in review'
-})
+        expect(failedMock).toHaveBeenCalledWith(
+            'Action failed: One of the API requests has failed. Please check the logs for more details.'
+        );
+    });
 
-afterEach(() => {
-    delete process.env['INPUT_CLICKUP_TOKEN']
-    delete process.env['INPUT_CLICKUP_CUSTOM_TASK_IDS']
-    delete process.env['INPUT_CLICKUP_TEAM_ID']
-    delete process.env['INPUT_CLICKUP_STATUS']
-    nock.cleanAll()
-    jest.restoreAllMocks()
-})
+    it('does not change the status from "done" to "approved"', async () => {
+        targetStatus = 'approved';
+        setEnvVars(targetStatus, 'ZXC-987');
+
+        mockClickUpApi('ZXC-987', 'done', targetStatus, false);
+
+        await run();
+
+        expect(warningMock).toHaveBeenCalledWith(
+            `Cannot change the status of ZXC-987 from done to ${targetStatus}. Skipping...`
+        );
+    });
+
+    it('does not change the status from "done" to "in progress"', async () => {
+        targetStatus = 'in progress';
+        setEnvVars(targetStatus, 'ZXC-987');
+
+        mockClickUpApi('ZXC-987', 'done', targetStatus, false);
+
+        await run();
+
+        expect(warningMock).toHaveBeenCalledWith(
+            `Cannot change the status of ZXC-987 from done to ${targetStatus}. Skipping...`
+        );
+    });
+
+    it('changes the status from "done" to "todo"', async () => {
+        targetStatus = 'todo';
+        setEnvVars(targetStatus, 'ABC-123');
+
+        mockClickUpApi('ABC-123', 'done', targetStatus);
+
+        await run();
+
+        expect(infoMock).toHaveBeenCalledWith(
+            `Changed the status of ABC-123 to ${targetStatus} successfully.`
+        );
+    });
+
+    it('warns and skips tasks that do not exist in ClickUp (404)', async () => {
+        setEnvVars(targetStatus, 'ABC-123\nNON-123');
+
+        mockClickUpApi('ABC-123', 'open', targetStatus);
+        nock(clickUpApiBase)
+            .get(new RegExp(`/NON-123/\\?custom_task_ids=true&team_id=\\d+`))
+            .reply(404, { err: 'Task not found' });
+
+        await run();
+
+        expect(infoMock).toHaveBeenCalledWith(
+            `Changed the status of ABC-123 to ${targetStatus} successfully.`
+        );
+        expect(warningMock).toHaveBeenCalledWith('Task NON-123 not found in ClickUp (404), skipping.');
+        expect(failedMock).not.toHaveBeenCalled();
+    });
+
+    it('fails when GET returns a non-404 error (e.g. 500)', async () => {
+        setEnvVars(targetStatus, 'ABC-123');
+
+        nock(clickUpApiBase)
+            .get(new RegExp(`/ABC-123/\\?custom_task_ids=true&team_id=\\d+`))
+            .reply(500, { err: 'Internal Server Error' });
+
+        await run();
+
+        expect(errorMock).toHaveBeenCalledWith(expect.stringContaining('ABC-123 GET error:'));
+        expect(failedMock).toHaveBeenCalledWith(
+            'Action failed: One of the API requests has failed. Please check the logs for more details.'
+        );
+    });
+});
