@@ -6192,8 +6192,8 @@ const run = async () => {
                 result = await axios_1.default.get(`https://api.clickup.com/api/v2/task/${task_id}/?custom_task_ids=true&team_id=${team_id}`, config);
             }
             catch (error) {
-                if (axios_1.default.isAxiosError(error) && error.response?.status === 404) {
-                    core.warning(`Task ${task_id} not found in ClickUp (404), skipping.`);
+                if (axios_1.default.isAxiosError(error) && (error.response?.status === 404 || error.response?.status === 401)) {
+                    core.warning(`Task ${task_id} not found in ClickUp (${error.response?.status}), skipping.`);
                     continue;
                 }
                 failed = true;

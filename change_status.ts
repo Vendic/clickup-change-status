@@ -26,8 +26,8 @@ const run = async (): Promise<void> => {
                     config
                 )
             } catch (error) {
-                if (axios.isAxiosError(error) && error.response?.status === 404) {
-                    core.warning(`Task ${task_id} not found in ClickUp (404), skipping.`)
+                if (axios.isAxiosError(error) && (error.response?.status === 404 || error.response?.status === 401)) {
+                    core.warning(`Task ${task_id} not found in ClickUp (${error.response?.status}), skipping.`)
                     continue
                 }
                 failed = true

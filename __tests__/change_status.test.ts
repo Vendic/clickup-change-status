@@ -158,7 +158,20 @@ describe('Change Status Action', () => {
         expect(failedMock).not.toHaveBeenCalled();
     });
 
-    it('fails when GET returns a non-404 error (e.g. 500)', async () => {
+    it('warns and skips tasks that return 401 from ClickUp API', async () => {
+        setEnvVars(targetStatus, 'FAKE-111');
+
+        nock(clickUpApiBase)
+            .get(new RegExp(`/FAKE-111/\\?custom_task_ids=true&team_id=\\d+`))
+            .reply(401, { err: 'Token invalid' });
+
+        await run();
+
+        expect(warningMock).toHaveBeenCalledWith('Task FAKE-111 not found in ClickUp (401), skipping.');
+        expect(failedMock).not.toHaveBeenCalled();
+    });
+
+    it('fails when GET returns a non-404/401 error (e.g. 500)', async () => {
         setEnvVars(targetStatus, 'ABC-123');
 
         nock(clickUpApiBase)
