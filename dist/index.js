@@ -6181,14 +6181,20 @@ const run = async () => {
             "status": target_status
         };
         for (const task_id of task_ids) {
-            let endpoint = `https://api.clickup.com/api/v2/task/${task_id}/?custom_task_ids=true&team_id=${team_id}`;
-            await axios_1.default.put(endpoint, body, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': token
-                }
-            }).then((result) => {
-                let new_status = result.data.status.status;
+            const endpoint = `https://api.clickup.com/api/v2/task/${task_id}/?custom_task_ids=true&team_id=${team_id}`;
+            const headers = {
+                'Content-Type': 'application/json',
+                'Authorization': token
+            };
+            try {
+                await axios_1.default.get(endpoint, { headers });
+            }
+            catch {
+                core.warning(`Task ${task_id} not found in ClickUp, skipping.`);
+                continue;
+            }
+            await axios_1.default.put(endpoint, body, { headers }).then((result) => {
+                const new_status = result.data.status.status;
                 core.info(`Changed the status of ${task_id} to ${new_status} successfully.`);
             }).catch(function (error) {
                 failed = true;
