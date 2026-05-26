@@ -10,8 +10,9 @@ describe('Change Status Action', () => {
     let failedMock: jest.SpyInstance;
     let infoMock: jest.SpyInstance;
     let warningMock: jest.SpyInstance;
+    let errorMock: jest.SpyInstance;
 
-    const setEnvVars = (status: string, customTaskIds = 'ABC-123\nDEF-123\nNON-123\nZXC-987') => {
+    const setEnvVars = (status: string, customTaskIds = 'ABC-123\nDEF-123') => {
         process.env['INPUT_CLICKUP_STATUS'] = status;
         process.env['INPUT_CLICKUP_CUSTOM_TASK_IDS'] = customTaskIds;
     };
@@ -53,12 +54,13 @@ describe('Change Status Action', () => {
     });
 
     beforeEach(() => {
-        targetStatus = 'approved'; // Default target status
+        targetStatus = 'approved';
         setEnvVars(targetStatus);
 
         failedMock = jest.spyOn(core, 'setFailed').mockImplementation(jest.fn());
         infoMock = jest.spyOn(core, 'info').mockImplementation(jest.fn());
         warningMock = jest.spyOn(core, 'warning').mockImplementation(jest.fn());
+        errorMock = jest.spyOn(core, 'error').mockImplementation(jest.fn());
     });
 
     afterEach(() => {
@@ -67,8 +69,8 @@ describe('Change Status Action', () => {
     });
 
     afterAll(() => {
-        delete process.env['GITHUB_REPOSITORY'];
-        delete process.env['INPUT_TOKEN'];
+        delete process.env['INPUT_CLICKUP_TOKEN'];
+        delete process.env['INPUT_CLICKUP_TEAM_ID'];
     });
 
     it('successfully changes the status of multiple ClickUp tasks', async () => {
@@ -86,10 +88,12 @@ describe('Change Status Action', () => {
         expect(infoMock).toHaveBeenCalledWith(
             `Changed the status of DEF-123 to ${targetStatus} successfully.`
         );
+        expect(failedMock).not.toHaveBeenCalled();
     });
 
     it('handles API failures gracefully', async () => {
-        mockClickUpApi('NON-123', 'in progress', targetStatus, false);
+        mockClickUpApi('ABC-123', 'in progress', targetStatus, false);
+        setEnvVars(targetStatus, 'ABC-123');
 
         await run();
 
@@ -100,7 +104,7 @@ describe('Change Status Action', () => {
 
     it('does not change the status from "done" to "approved"', async () => {
         targetStatus = 'approved';
-        setEnvVars(targetStatus);
+        setEnvVars(targetStatus, 'ZXC-987');
 
         mockClickUpApi('ZXC-987', 'done', targetStatus, false);
 
@@ -113,7 +117,7 @@ describe('Change Status Action', () => {
 
     it('does not change the status from "done" to "in progress"', async () => {
         targetStatus = 'in progress';
-        setEnvVars(targetStatus);
+        setEnvVars(targetStatus, 'ZXC-987');
 
         mockClickUpApi('ZXC-987', 'done', targetStatus, false);
 
@@ -134,6 +138,38 @@ describe('Change Status Action', () => {
 
         expect(infoMock).toHaveBeenCalledWith(
             `Changed the status of ABC-123 to ${targetStatus} successfully.`
+        );
+    });
+
+    it('warns and skips tasks that do not exist in ClickUp (404)', async () => {
+        setEnvVars(targetStatus, 'ABC-123\nNON-123');
+
+        mockClickUpApi('ABC-123', 'open', targetStatus);
+        nock(clickUpApiBase)
+            .get(new RegExp(`/NON-123/\\?custom_task_ids=true&team_id=\\d+`))
+            .reply(404, { err: 'Task not found' });
+
+        await run();
+
+        expect(infoMock).toHaveBeenCalledWith(
+            `Changed the status of ABC-123 to ${targetStatus} successfully.`
+        );
+        expect(warningMock).toHaveBeenCalledWith('Task NON-123 not found in ClickUp (404), skipping.');
+        expect(failedMock).not.toHaveBeenCalled();
+    });
+
+    it('fails when GET returns a non-404 error (e.g. 500)', async () => {
+        setEnvVars(targetStatus, 'ABC-123');
+
+        nock(clickUpApiBase)
+            .get(new RegExp(`/ABC-123/\\?custom_task_ids=true&team_id=\\d+`))
+            .reply(500, { err: 'Internal Server Error' });
+
+        await run();
+
+        expect(errorMock).toHaveBeenCalledWith(expect.stringContaining('ABC-123 GET error:'));
+        expect(failedMock).toHaveBeenCalledWith(
+            'Action failed: One of the API requests has failed. Please check the logs for more details.'
         );
     });
 });
